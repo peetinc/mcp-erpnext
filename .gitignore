@@ -1,5 +1,4 @@
 node_modules/
-deno.lock
 dist-node/
 src/ui/dist/
 src/ui/node_modules/
