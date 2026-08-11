@@ -50,6 +50,12 @@ export {
 
 export type { FrappeClientConfig } from "./src/api/frappe-client.ts";
 
+// Re-export currency resolution (deployment data, not a source constant)
+export {
+  getDefaultCurrency,
+  resetDefaultCurrencyCache,
+} from "./src/api/currency.ts";
+
 // Re-export cache (for direct use or DI in tests)
 export { getCache, setCache } from "./src/cache/cache.ts";
 export { MemoryCache } from "./src/cache/memory.ts";

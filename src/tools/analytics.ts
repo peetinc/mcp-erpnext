@@ -14,6 +14,7 @@
 import type { FrappeFilter } from "../api/types.ts";
 import type { ErpNextTool } from "./types.ts";
 import { CHART_META, FUNNEL_META, KPI_META } from "./viewer-meta.ts";
+import { getDefaultCurrency } from "../api/currency.ts";
 
 /**
  * Upper bound on the item codes `erpnext_product_radar` will compare.
@@ -190,7 +191,7 @@ export const analyticsTools: ErpNextTool[] = [
           type: "donut",
           labels: sorted.map(([s]) => s),
           datasets: [{ label: "Revenue", values: sorted.map(([, v]) => v) }],
-          currency: "EUR",
+          currency: await getDefaultCurrency(ctx.client),
           generatedAt: new Date().toISOString(),
           _meta: CHART_META,
         };
@@ -231,7 +232,7 @@ export const analyticsTools: ErpNextTool[] = [
             values: sorted.map(([, { total }]) => total),
             color: "#c084fc",
           }],
-          currency: "EUR",
+          currency: await getDefaultCurrency(ctx.client),
           generatedAt: new Date().toISOString(),
           _meta: CHART_META,
         };
@@ -271,7 +272,7 @@ export const analyticsTools: ErpNextTool[] = [
           values: sorted.map(([, { total }]) => total),
           color: "#4ade80",
         }],
-        currency: "EUR",
+        currency: await getDefaultCurrency(ctx.client),
         generatedAt: new Date().toISOString(),
         _meta: CHART_META,
       };
@@ -380,7 +381,7 @@ export const analyticsTools: ErpNextTool[] = [
             showDots: chartType === "line",
             ...(chartType === "stacked-area" ? { stack: "revenue" } : {}),
           })),
-          currency: "EUR",
+          currency: await getDefaultCurrency(ctx.client),
           yAxisLabel: "Revenue",
           _meta: CHART_META,
         };
@@ -408,7 +409,7 @@ export const analyticsTools: ErpNextTool[] = [
           color: "#60a5fa",
           showDots: true,
         }],
-        currency: "EUR",
+        currency: await getDefaultCurrency(ctx.client),
         yAxisLabel: "Revenue",
         _meta: CHART_META,
       };
@@ -463,7 +464,7 @@ export const analyticsTools: ErpNextTool[] = [
           type: chartType,
           labels: sorted.map(([c]) => c),
           datasets: [{ label: "Total", values: sorted.map(([, v]) => v) }],
-          currency: "EUR",
+          currency: await getDefaultCurrency(ctx.client),
           _meta: CHART_META,
         };
       }
@@ -517,7 +518,7 @@ export const analyticsTools: ErpNextTool[] = [
           color: STATUS_COLORS[s] ?? "#94a3b8",
           stack: "status",
         })),
-        currency: "EUR",
+        currency: await getDefaultCurrency(ctx.client),
         xAxisLabel: "Customer",
         yAxisLabel: "Order Value",
         _meta: CHART_META,
@@ -586,7 +587,7 @@ export const analyticsTools: ErpNextTool[] = [
         showRightAxis: true,
         yAxisLabel: "Revenue (€)",
         rightAxisLabel: "# Orders",
-        currency: "EUR",
+        currency: await getDefaultCurrency(ctx.client),
         _meta: CHART_META,
       };
     },
@@ -663,7 +664,7 @@ export const analyticsTools: ErpNextTool[] = [
           value: Math.round(value),
           color: COLORS[i % COLORS.length],
         })),
-        currency: "EUR",
+        currency: await getDefaultCurrency(ctx.client),
         _meta: CHART_META,
       };
     },
@@ -950,7 +951,7 @@ export const analyticsTools: ErpNextTool[] = [
       return {
         label: "Revenue MTD",
         value: currentTotal,
-        currency: "EUR",
+        currency: await getDefaultCurrency(ctx.client),
         delta: Math.round(delta * 10) / 10,
         deltaLabel: "vs last month",
         trend: delta > 0 ? "up" : delta < 0 ? "down" : "flat",
@@ -989,13 +990,14 @@ export const analyticsTools: ErpNextTool[] = [
       );
       const count = invoices.length;
 
+      const currency = await getDefaultCurrency(ctx.client);
       return {
         label: "Outstanding Receivables",
         value: total,
         formattedValue: `${count} inv. / ${
-          total.toLocaleString("en-US", { style: "currency", currency: "EUR" })
+          total.toLocaleString("en-US", { style: "currency", currency })
         }`,
-        currency: "EUR",
+        currency,
         trend: total > 0 ? "up" : "flat",
         trendIsGood: false,
         color: "#fbbf24",
@@ -1163,12 +1165,14 @@ export const analyticsTools: ErpNextTool[] = [
         0,
       );
 
+      const currency = await getDefaultCurrency(ctx.client);
       return {
         label: "Overdue Invoices",
         value: count,
         formattedValue: `${count} inv. / ${
-          total.toLocaleString("en-US", { style: "currency", currency: "EUR" })
+          total.toLocaleString("en-US", { style: "currency", currency })
         }`,
+        currency,
         trend: count > 0 ? "up" : "flat",
         trendIsGood: false,
         color: "#f87171",
@@ -1301,7 +1305,7 @@ export const analyticsTools: ErpNextTool[] = [
         title: "Sales Funnel",
         subtitle: periodLabels[period] ?? "All Time",
         stages,
-        currency: "EUR",
+        currency: await getDefaultCurrency(ctx.client),
         _meta: FUNNEL_META,
       };
     },
@@ -1411,7 +1415,7 @@ export const analyticsTools: ErpNextTool[] = [
             value: Math.round(total),
             color: COLORS[i % COLORS.length],
           })),
-          currency: "EUR",
+          currency: await getDefaultCurrency(ctx.client),
           _meta: CHART_META,
         };
       }
@@ -1429,7 +1433,7 @@ export const analyticsTools: ErpNextTool[] = [
           color: bucket.color,
           stack: "aging",
         })),
-        currency: "EUR",
+        currency: await getDefaultCurrency(ctx.client),
         xAxisLabel: "Customer",
         yAxisLabel: "Outstanding Amount",
         _meta: CHART_META,
@@ -1555,7 +1559,7 @@ export const analyticsTools: ErpNextTool[] = [
             },
           ],
           showRightAxis: true,
-          currency: "EUR",
+          currency: await getDefaultCurrency(ctx.client),
           yAxisLabel: "Revenue",
           rightAxisLabel: "Margin %",
           _meta: CHART_META,
@@ -1614,7 +1618,7 @@ export const analyticsTools: ErpNextTool[] = [
           },
         ],
         showRightAxis: true,
-        currency: "EUR",
+        currency: await getDefaultCurrency(ctx.client),
         yAxisLabel: "Revenue",
         rightAxisLabel: "Margin %",
         _meta: CHART_META,
@@ -1761,7 +1765,7 @@ export const analyticsTools: ErpNextTool[] = [
         ...(chartType === "composed"
           ? { showRightAxis: true, rightAxisLabel: "Net Profit" }
           : {}),
-        currency: "EUR",
+        currency: await getDefaultCurrency(ctx.client),
         yAxisLabel: "Amount",
         _meta: CHART_META,
       };

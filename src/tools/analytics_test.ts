@@ -14,6 +14,15 @@ import { SchemaValidator } from "@casys/mcp-server";
 import { analyticsTools } from "./analytics.ts";
 import type { FrappeClient } from "../api/frappe-client.ts";
 import type { ErpNextToolContext } from "./types.ts";
+import { resetDefaultCurrencyCache } from "../api/currency.ts";
+
+/** Analytics payloads carry a currency resolved from the instance, and the mock
+ *  client has no Company. Pinned to a code that is deliberately neither the old
+ *  hardcoded "EUR" nor a plausible default, so a reintroduced constant fails
+ *  rather than coincidentally passing. */
+const TEST_CURRENCY = "CHF";
+Deno.env.set("ERPNEXT_CURRENCY", TEST_CURRENCY);
+resetDefaultCurrencyCache();
 
 /** Generate an ISO date N months back from today, day 15 — keeps tests robust
  *  against the system clock (the analytics tools window-filter from `now`). */
@@ -474,7 +483,7 @@ Deno.test("erpnext_kpi_revenue - returns KPI with sparkline (single API call)", 
   const result = await tool.handler({}, makeCtx(mockClient)) as any;
 
   assertEquals(result.label, "Revenue MTD");
-  assertEquals(result.currency, "EUR");
+  assertEquals(result.currency, TEST_CURRENCY);
   assertEquals(result.value, 5000); // only current month bucket
   assert(Array.isArray(result.sparkline));
   assertEquals(result.sparkline.length, 6);
