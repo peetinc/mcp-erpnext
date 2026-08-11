@@ -15,6 +15,11 @@ import { analyticsTools } from "./analytics.ts";
 import type { FrappeClient } from "../api/frappe-client.ts";
 import type { ErpNextToolContext } from "./types.ts";
 import { resetDefaultCurrencyCache } from "../api/currency.ts";
+import { getRevenueSource } from "../api/revenue-source.ts";
+
+/** Same resolution the tools use, so these assert the wiring rather than a
+ *  hardcoded doctype. */
+const REVENUE = getRevenueSource();
 
 /** Analytics payloads carry a currency resolved from the instance, and the mock
  *  client has no Company. Pinned to a code that is deliberately neither the old
@@ -180,12 +185,12 @@ Deno.test("erpnext_revenue_trend - returns line chart with monthly data", async 
       {
         customer_name: "Acme",
         grand_total: 5000,
-        transaction_date: relativeMonth(0, 10),
+        [REVENUE.dateField]: relativeMonth(0, 10),
       },
       {
         customer_name: "Acme",
         grand_total: 3000,
-        transaction_date: relativeMonth(1, 15),
+        [REVENUE.dateField]: relativeMonth(1, 15),
       },
     ],
   });
@@ -199,6 +204,9 @@ Deno.test("erpnext_revenue_trend - returns line chart with monthly data", async 
   assertEquals(result.type, "line");
   assertEquals(result.labels.length, 3);
   assertEquals(result.datasets.length, 1); // total mode
+  // Values, not just shape: reading the wrong date field yields Invalid Date,
+  // every row falls outside the window, and a shape-only assertion still passes.
+  assertEquals(result.datasets[0].values, [0, 3000, 5000]);
   assertChartMeta(result);
 });
 
@@ -208,12 +216,12 @@ Deno.test("erpnext_revenue_trend - customer grouping produces multiple datasets"
       {
         customer_name: "Acme",
         grand_total: 5000,
-        transaction_date: relativeMonth(0, 10),
+        [REVENUE.dateField]: relativeMonth(0, 10),
       },
       {
         customer_name: "Globex",
         grand_total: 3000,
-        transaction_date: relativeMonth(1, 15),
+        [REVENUE.dateField]: relativeMonth(1, 15),
       },
     ],
   });
@@ -359,7 +367,7 @@ Deno.test("erpnext_product_radar - returns radar with auto-selected items", asyn
         // Per-item bin queries
         return [{ actual_qty: 50, stock_value: 5000 }];
       }
-      if (doctype === "Sales Order Item") {
+      if (doctype === REVENUE.itemDoctype) {
         return [];
       }
       return [];
@@ -440,7 +448,7 @@ Deno.test("erpnext_price_vs_qty - falls back to Bin data when no Item Price", as
     list: async (doctype: string) => {
       callCount++;
       if (doctype === "Item Price") return [];
-      if (doctype === "Sales Order Item") return [];
+      if (doctype === REVENUE.itemDoctype) return [];
       if (doctype === "Bin") {
         return [
           { item_code: "ITEM-A", valuation_rate: 100, actual_qty: 50 },
@@ -474,8 +482,8 @@ Deno.test("erpnext_kpi_revenue - returns KPI with sparkline (single API call)", 
 
   const mockClient = makeMockClient({
     list: async () => [
-      { grand_total: 5000, transaction_date: thisMonth },
-      { grand_total: 3000, transaction_date: lastMonth },
+      { grand_total: 5000, [REVENUE.dateField]: thisMonth },
+      { grand_total: 3000, [REVENUE.dateField]: lastMonth },
     ],
   });
 
@@ -522,9 +530,9 @@ Deno.test("erpnext_kpi_orders - counts orders this month", async () => {
   const tool = getTool("erpnext_kpi_orders");
   const result = await tool.handler({}, makeCtx(mockClient)) as any;
 
-  assertEquals(result.label, "Orders This Month");
+  assertEquals(result.label, `${REVENUE.nounPluralTitle} This Month`);
   assertEquals(result.value, 2); // count, not sum
-  assert(result.unit === "orders");
+  assert(result.unit === REVENUE.nounPlural);
   assertChartMeta(result, "kpi-viewer");
 });
 
@@ -535,7 +543,7 @@ Deno.test("erpnext_kpi_gross_margin - computes margin from SO items and Bin", as
   const mockClient = makeMockClient({
     list: async (doctype: string) => {
       callIdx++;
-      if (doctype === "Sales Order Item") {
+      if (doctype === REVENUE.itemDoctype) {
         return [
           { item_code: "ITEM-A", qty: 10, amount: 5000 },
           { item_code: "ITEM-B", qty: 5, amount: 2500 },
@@ -595,7 +603,7 @@ Deno.test("erpnext_sales_funnel - returns 4-stage funnel with conversion rates",
         }];
       }
       if (doctype === "Quotation") return [{ name: "Q1", grand_total: 4000 }];
-      if (doctype === "Sales Order") {
+      if (doctype === REVENUE.doctype) {
         return [{ name: "SO1", grand_total: 3500 }];
       }
       return [];
@@ -698,8 +706,11 @@ Deno.test("erpnext_gross_profit - returns composed chart with margin line", asyn
 Deno.test("erpnext_profit_loss - returns monthly income vs expense", async () => {
   const mockClient = makeMockClient({
     list: async (doctype: string) => {
-      if (doctype === "Sales Order") {
-        return [{ grand_total: 10000, transaction_date: relativeMonth(0, 15) }];
+      if (doctype === REVENUE.doctype) {
+        return [{
+          grand_total: 10000,
+          [REVENUE.dateField]: relativeMonth(0, 15),
+        }];
       }
       if (doctype === "Purchase Order") {
         return [{ grand_total: 6000, transaction_date: relativeMonth(1, 10) }];

@@ -15,6 +15,12 @@ import type { FrappeFilter } from "../api/types.ts";
 import type { ErpNextTool } from "./types.ts";
 import { CHART_META, FUNNEL_META, KPI_META } from "./viewer-meta.ts";
 import { getDefaultCurrency } from "../api/currency.ts";
+import { getRevenueSource } from "../api/revenue-source.ts";
+
+/** Which doctype counts as revenue. Resolved once at module load so tool
+ *  descriptions describe what the handlers actually query — upstream's did
+ *  not. See api/revenue-source.ts. */
+const REVENUE = getRevenueSource();
 
 /**
  * Upper bound on the item codes `erpnext_product_radar` will compare.
@@ -287,7 +293,7 @@ export const analyticsTools: ErpNextTool[] = [
     _meta: CHART_META,
     description:
       "Sales revenue trend over time. Returns a line chart (or area if type='area') " +
-      "with monthly revenue from Sales Orders. " +
+      `with monthly revenue from ${REVENUE.doctype}s. ` +
       "Add group_by='customer' for multi-line per customer. " +
       "Use type='stacked-area' to stack customers.",
     category: "analytics",
@@ -324,11 +330,11 @@ export const analyticsTools: ErpNextTool[] = [
       );
       const startStr = startDate.toISOString().split("T")[0];
 
-      const orders = await ctx.client.list("Sales Order", {
-        fields: ["customer_name", "grand_total", "transaction_date"],
-        filters: [["transaction_date", ">=", startStr], ["docstatus", "!=", 2]],
+      const orders = await ctx.client.list(REVENUE.doctype, {
+        fields: ["customer_name", "grand_total", REVENUE.dateField],
+        filters: [[REVENUE.dateField, ">=", startStr], ["docstatus", "!=", 2]],
         limit: 1000,
-        order_by: "transaction_date asc",
+        order_by: `${REVENUE.dateField} asc`,
       });
 
       // Build month labels
@@ -350,7 +356,7 @@ export const analyticsTools: ErpNextTool[] = [
         // Multi-line: one dataset per customer
         const byCustomerMonth: Record<string, number[]> = {};
         for (const order of orders) {
-          const d = new Date(order.transaction_date as string);
+          const d = new Date(order[REVENUE.dateField] as string);
           const mIdx = (d.getFullYear() - startDate.getFullYear()) * 12 +
             d.getMonth() - startDate.getMonth();
           if (mIdx < 0 || mIdx >= monthsBack) continue;
@@ -390,7 +396,7 @@ export const analyticsTools: ErpNextTool[] = [
       // Single line: total revenue per month
       const monthlyTotals = new Array(monthsBack).fill(0);
       for (const order of orders) {
-        const d = new Date(order.transaction_date as string);
+        const d = new Date(order[REVENUE.dateField] as string);
         const mIdx = (d.getFullYear() - startDate.getFullYear()) * 12 +
           d.getMonth() - startDate.getMonth();
         if (mIdx >= 0 && mIdx < monthsBack) {
@@ -423,7 +429,7 @@ export const analyticsTools: ErpNextTool[] = [
     annotations: { readOnlyHint: true },
     _meta: CHART_META,
     description:
-      "Breakdown of Sales Orders by customer (stacked-bar by status) or as a pie chart of totals. " +
+      `Breakdown of ${REVENUE.doctype}s by customer (stacked-bar by status) or as a pie chart of totals. ` +
       "type='stacked-bar' → orders stacked by status per customer. " +
       "type='pie' → total order value per customer as pie. " +
       "type='donut' → same as pie but with donut hole.",
@@ -443,7 +449,7 @@ export const analyticsTools: ErpNextTool[] = [
       const chartType = (input.type as string) ?? "stacked-bar";
       const limit = (input.limit as number) ?? 8;
 
-      const orders = await ctx.client.list("Sales Order", {
+      const orders = await ctx.client.list(REVENUE.doctype, {
         fields: ["customer_name", "status", "grand_total"],
         filters: [["docstatus", "!=", 2]],
         limit: 500,
@@ -544,7 +550,7 @@ export const analyticsTools: ErpNextTool[] = [
     },
     handler: async (input, ctx) => {
       const limit = (input.limit as number) ?? 8;
-      const orders = await ctx.client.list("Sales Order", {
+      const orders = await ctx.client.list(REVENUE.doctype, {
         fields: ["customer_name", "grand_total"],
         filters: [["docstatus", "!=", 2]],
         limit: 500,
@@ -576,7 +582,7 @@ export const analyticsTools: ErpNextTool[] = [
             type: "bar",
           },
           {
-            label: "Orders",
+            label: REVENUE.nounPluralTitle,
             values: sorted.map(([, { count }]) => count),
             color: "#fbbf24",
             type: "line",
@@ -762,7 +768,7 @@ export const analyticsTools: ErpNextTool[] = [
       });
 
       // Order data — fetch all, filter in memory (the item set can exceed a sane "in" filter size)
-      const soItems = await ctx.client.list("Sales Order Item", {
+      const soItems = await ctx.client.list(REVENUE.itemDoctype, {
         fields: ["item_code", "qty", "amount"],
         filters: [["docstatus", "!=", 2]],
         limit: 500,
@@ -837,7 +843,7 @@ export const analyticsTools: ErpNextTool[] = [
       }
 
       // Get order quantities
-      const soItems = await ctx.client.list("Sales Order Item", {
+      const soItems = await ctx.client.list(REVENUE.itemDoctype, {
         fields: ["item_code", "qty"],
         filters: [["docstatus", "!=", 2]],
         limit: 500,
@@ -909,7 +915,8 @@ export const analyticsTools: ErpNextTool[] = [
     name: "erpnext_kpi_revenue",
     annotations: { readOnlyHint: true },
     _meta: KPI_META,
-    description: "KPI card: total Sales Order revenue for the current month, " +
+    description:
+      `KPI card: total ${REVENUE.doctype} revenue for the current month, ` +
       "with delta % vs previous month and sparkline of last 6 months.",
     category: "analytics",
     inputSchema: { type: "object", properties: {} },
@@ -919,10 +926,10 @@ export const analyticsTools: ErpNextTool[] = [
       const sixMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 5, 1);
       const sinceStr = sixMonthsAgo.toISOString().split("T")[0];
 
-      const allOrders = await ctx.client.list("Sales Order", {
-        fields: ["grand_total", "transaction_date"],
+      const allOrders = await ctx.client.list(REVENUE.doctype, {
+        fields: ["grand_total", REVENUE.dateField],
         filters: [
-          ["transaction_date", ">=", sinceStr],
+          [REVENUE.dateField, ">=", sinceStr],
           ["docstatus", "!=", 2],
         ],
         limit: 5000,
@@ -931,7 +938,7 @@ export const analyticsTools: ErpNextTool[] = [
       // Bucket into 6 monthly bins
       const sparkline: number[] = [0, 0, 0, 0, 0, 0];
       for (const o of allOrders) {
-        const d = new Date(o.transaction_date as string);
+        const d = new Date(o[REVENUE.dateField] as string);
         // Month index: 0 = oldest (5 months ago), 5 = current month
         const monthDiff = (now.getFullYear() - d.getFullYear()) * 12 +
           (now.getMonth() - d.getMonth());
@@ -1013,7 +1020,7 @@ export const analyticsTools: ErpNextTool[] = [
     annotations: { readOnlyHint: true },
     _meta: KPI_META,
     description:
-      "KPI card: count and total value of Sales Orders created this month, " +
+      `KPI card: count and total value of ${REVENUE.doctype}s created this month, ` +
       "with delta % vs last month.",
     category: "analytics",
     inputSchema: { type: "object", properties: {} },
@@ -1027,21 +1034,21 @@ export const analyticsTools: ErpNextTool[] = [
       const lastMonthStartStr = lastMonthStart.toISOString().split("T")[0];
       const lastMonthEndStr = lastMonthEnd.toISOString().split("T")[0];
 
-      const currentOrders = await ctx.client.list("Sales Order", {
+      const currentOrders = await ctx.client.list(REVENUE.doctype, {
         fields: ["grand_total"],
         filters: [
-          ["transaction_date", ">=", thisMonthStart],
+          [REVENUE.dateField, ">=", thisMonthStart],
           ["docstatus", "!=", 2],
         ],
         limit: 1000,
       });
       const currentCount = currentOrders.length;
 
-      const prevOrders = await ctx.client.list("Sales Order", {
+      const prevOrders = await ctx.client.list(REVENUE.doctype, {
         fields: ["grand_total"],
         filters: [
-          ["transaction_date", ">=", lastMonthStartStr],
-          ["transaction_date", "<=", lastMonthEndStr],
+          [REVENUE.dateField, ">=", lastMonthStartStr],
+          [REVENUE.dateField, "<=", lastMonthEndStr],
           ["docstatus", "!=", 2],
         ],
         limit: 1000,
@@ -1053,10 +1060,10 @@ export const analyticsTools: ErpNextTool[] = [
         : 0;
 
       return {
-        label: "Orders This Month",
+        label: `${REVENUE.nounPluralTitle} This Month`,
         value: currentCount,
-        formattedValue: `${currentCount} orders`,
-        unit: "orders",
+        formattedValue: `${currentCount} ${REVENUE.nounPlural}`,
+        unit: REVENUE.nounPlural,
         delta: Math.round(delta * 10) / 10,
         deltaLabel: "vs last month",
         trend: delta > 0 ? "up" : delta < 0 ? "down" : "flat",
@@ -1074,13 +1081,13 @@ export const analyticsTools: ErpNextTool[] = [
     annotations: { readOnlyHint: true },
     _meta: KPI_META,
     description:
-      "KPI card: estimated gross margin % based on Sales Order revenue vs " +
+      `KPI card: estimated gross margin % based on ${REVENUE.doctype} revenue vs ` +
       "valuation rate from stock (Bin). Margin = (revenue - cost) / revenue * 100.",
     category: "analytics",
     inputSchema: { type: "object", properties: {} },
     handler: async (_input, ctx) => {
-      // Revenue from Sales Order Items (all non-cancelled)
-      const soItems = await ctx.client.list("Sales Order Item", {
+      // Revenue from the revenue source's line items (all non-cancelled)
+      const soItems = await ctx.client.list(REVENUE.itemDoctype, {
         fields: ["item_code", "qty", "amount"],
         filters: [
           ["docstatus", "!=", 2],
@@ -1188,7 +1195,7 @@ export const analyticsTools: ErpNextTool[] = [
     annotations: { readOnlyHint: true },
     _meta: FUNNEL_META,
     description:
-      "Sales funnel from Lead → Opportunity → Quotation → Sales Order. " +
+      `Sales funnel from Lead → Opportunity → Quotation → ${REVENUE.doctype}. ` +
       "Shows count and value at each stage with conversion rates between stages.",
     category: "analytics",
     inputSchema: {
@@ -1229,6 +1236,15 @@ export const analyticsTools: ErpNextTool[] = [
         ...txnFilters,
         ["docstatus", "!=", 2],
       ];
+      // The revenue stage dates on its own field: Sales Invoice books on
+      // posting_date, not the transaction_date Opportunity and Quotation share.
+      // Frappe matches no rows against a column the doctype doesn't have, so
+      // reusing submittedTxnFilters here would silently empty the final stage
+      // and report a 0% conversion rate.
+      const revenueFilters: FrappeFilter[] = [
+        ...(sinceDate ? [[REVENUE.dateField, ">=", sinceDate]] : []),
+        ["docstatus", "!=", 2],
+      ] as FrappeFilter[];
 
       // The four funnel stages are independent queries — none feeds the next —
       // so they go out together. Awaiting them in sequence cost four round-trips
@@ -1249,9 +1265,9 @@ export const analyticsTools: ErpNextTool[] = [
           filters: submittedTxnFilters,
           limit: 500,
         }),
-        ctx.client.list("Sales Order", {
+        ctx.client.list(REVENUE.doctype, {
           fields: ["name", "grand_total"],
-          filters: submittedTxnFilters,
+          filters: revenueFilters,
           limit: 500,
         }),
       ]);
@@ -1284,7 +1300,7 @@ export const analyticsTools: ErpNextTool[] = [
             : 0,
         },
         {
-          label: "Orders",
+          label: REVENUE.nounPluralTitle,
           count: orders.length,
           value: orders.reduce((s, o) => s + (Number(o.grand_total) || 0), 0),
           color: "#fbbf24",
@@ -1634,7 +1650,7 @@ export const analyticsTools: ErpNextTool[] = [
     _meta: CHART_META,
     description:
       "Profit & Loss overview — bar chart comparing total income vs total expenses per month " +
-      "from Sales Orders (income) and Purchase Orders (expenses). " +
+      `from ${REVENUE.doctype}s (income) and Purchase Orders (expenses). ` +
       "Shows net profit line. Use type='composed' for bar+line.",
     category: "analytics",
     inputSchema: {
@@ -1666,16 +1682,16 @@ export const analyticsTools: ErpNextTool[] = [
       // Income and expenses are the same query against two doctypes, with no
       // dependency between them — one round-trip instead of two.
       const [salesOrders, purchaseOrders] = await Promise.all([
-        // Sales Orders (income) — submitted only
-        ctx.client.list("Sales Order", {
-          fields: ["grand_total", "transaction_date"],
-          filters: [["transaction_date", ">=", startStr], [
+        // Revenue source (income) — submitted only
+        ctx.client.list(REVENUE.doctype, {
+          fields: ["grand_total", REVENUE.dateField],
+          filters: [[REVENUE.dateField, ">=", startStr], [
             "docstatus",
             "=",
             1,
           ]],
           limit: 1000,
-          order_by: "transaction_date asc",
+          order_by: `${REVENUE.dateField} asc`,
         }),
         // Purchase Orders (expenses) — submitted only
         ctx.client.list("Purchase Order", {
@@ -1710,7 +1726,7 @@ export const analyticsTools: ErpNextTool[] = [
       const expenses = new Array(monthsBack).fill(0) as number[];
 
       for (const so of salesOrders) {
-        const d = new Date(so.transaction_date as string);
+        const d = new Date(so[REVENUE.dateField] as string);
         const mIdx = (d.getFullYear() - startDate.getFullYear()) * 12 +
           d.getMonth() - startDate.getMonth();
         if (mIdx >= 0 && mIdx < monthsBack) {
